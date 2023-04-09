@@ -17,7 +17,6 @@
 package array
 
 import (
-<<<<<<< HEAD
 	"fmt"
 
 	"github.com/apache/arrow/go/v12/arrow"
@@ -35,24 +34,6 @@ type Edit struct {
 // or deleted from (false) base. Each insertion or deletion is followed by a run of
 // elements which are unchanged from base to target; the length of this run is stored
 // in RunLength. (Note that the edit script begins and ends with a run of shared
-=======
-	"errors"
-	"fmt"
-	"strings"
-
-	"github.com/apache/arrow/go/v12/arrow"
-	"github.com/apache/arrow/go/v12/arrow/memory"
-)
-
-// Diff compares two arrays, returning an edit script which expresses the difference
-// between them. The edit script can be applied to the base array to produce the target.
-//
-// An edit script is an array of struct(insert bool, run_length int64).
-// Each element of "insert" determines whether an element was inserted into (true)
-// or deleted from (false) base. Each insertion or deletion is followed by a run of
-// elements which are unchanged from base to target; the length of this run is stored
-// in "run_length". (Note that the edit script begins and ends with a run of shared
->>>>>>> 7e60a05fa (Add array diff string (#2))
 // elements but both fields of the struct must have the same length. To accommodate this
 // the first element of "insert" should be ignored.)
 //
@@ -64,7 +45,6 @@ type Edit struct {
 //	{"insert": false, "run_length": 0} // delete("o") then an empty run
 //
 // ]
-<<<<<<< HEAD
 type Edits []Edit
 
 // Diff compares two arrays, returning an edit script which expresses the difference
@@ -85,33 +65,6 @@ func Diff(base, target arrow.Array) (edits Edits, err error) {
 	}
 	d := newQuadraticSpaceMyersDiff(base, target)
 	return d.Diff()
-=======
-//
-// base: baseline for comparison
-// target: an array of identical type to base whose elements differ from base's
-// mem: memory to store the result will be allocated from this memory pool
-func Diff(base, target arrow.Array, mem memory.Allocator) (*Struct, error) {
-	if base.DataType().Fingerprint() != target.DataType().Fingerprint() {
-		return nil, errors.New("only taking the diff of like-typed arrays is supported")
-	}
-	switch base.DataType().ID() {
-	case arrow.EXTENSION:
-		return Diff(base.(ExtensionArray).Storage(), target.(ExtensionArray).Storage(), mem)
-	case arrow.DICTIONARY:
-		return nil, fmt.Errorf("diffing arrays of type %s is not implemented", base.DataType().String())
-	case arrow.RUN_END_ENCODED:
-		return nil, fmt.Errorf("diffing arrays of type %s is not implemented", base.DataType().String())
-	}
-	d := newQuadraticSpaceMyersDiff(base, target)
-	r, err := d.Diff(mem)
-	if err != nil {
-		if r != nil {
-			r.Release()
-		}
-		return nil, err
-	}
-	return r, nil
->>>>>>> 7e60a05fa (Add array diff string (#2))
 }
 
 // editPoint represents an intermediate state in the comparison of two arrays
@@ -120,13 +73,6 @@ type editPoint struct {
 	target int
 }
 
-<<<<<<< HEAD
-=======
-func (e editPoint) Equals(other editPoint) bool {
-	return e.base == other.base && e.target == other.target
-}
-
->>>>>>> 7e60a05fa (Add array diff string (#2))
 type quadraticSpaceMyersDiff struct {
 	base         arrow.Array
 	target       arrow.Array
