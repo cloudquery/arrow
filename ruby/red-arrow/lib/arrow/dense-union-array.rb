@@ -15,12 +15,12 @@
 # specific language governing permissions and limitations
 # under the License.
 
-# This file is called from a test in test_serialization.py.
-
-import sys
-
-import pyarrow as pa
-
-with open(sys.argv[1], 'rb') as f:
-    data = f.read()
-    pa.deserialize(data)
+module Arrow
+  class DenseUnionArray
+    def get_value(i)
+      child_id = get_child_id(i)
+      field = get_field(child_id)
+      field[get_value_offset(i)]
+    end
+  end
+end
