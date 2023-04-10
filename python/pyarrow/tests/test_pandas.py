@@ -187,17 +187,12 @@ class TestConvertMetadata:
         _check_pandas_roundtrip(df, preserve_index=True)
 
     def test_column_index_names_with_tz(self):
-        if Version("2.0.0.dev0") <= Version(pd.__version__) < Version("2.0.0"):
-            # TODO: regression in pandas, should be fixed before final 2.0.0
-            # https://github.com/pandas-dev/pandas/issues/50140
-            pytest.skip("Regression in pandas 2.0.0.dev")
         # ARROW-13756
         # Bug if index is timezone aware DataTimeIndex
 
         df = pd.DataFrame(
             np.random.randn(5, 3),
-            columns=pd.date_range(
-                "2021-01-01", "2021-01-3", freq="D", tz="CET")
+            columns=pd.date_range("2021-01-01", periods=3, freq="50D", tz="CET")
         )
         _check_pandas_roundtrip(df, preserve_index=True)
 
@@ -453,11 +448,11 @@ class TestConvertMetadata:
                                         preserve_index=True)
 
     def test_binary_column_name(self):
-        if Version("2.0.0.dev0") <= Version(pd.__version__) < Version("2.0.0"):
-            # TODO: regression in pandas, should be fixed before final 2.0.0
+        if Version("2.0.0") <= Version(pd.__version__) < Version("2.1.0"):
+            # TODO: regression in pandas, hopefully fixed in next version
             # https://issues.apache.org/jira/browse/ARROW-18394
             # https://github.com/pandas-dev/pandas/issues/50127
-            pytest.skip("Regression in pandas 2.0.0.dev")
+            pytest.skip("Regression in pandas 2.0.0")
         column_data = ['い']
         key = 'あ'.encode()
         data = {key: column_data}
@@ -1510,7 +1505,6 @@ class TestConvertDateTimeLikeTypes:
         # identical (pyarrow still defaults to pytz)
         # TODO remove if https://github.com/apache/arrow/issues/15047 is fixed
         _check_pandas_roundtrip(df, check_dtype=False)
-        _check_serialize_components_roundtrip(df)
 
     def test_timedeltas_no_nulls(self):
         df = pd.DataFrame({
@@ -2064,11 +2058,6 @@ class TestConvertListTypes:
         assert result3.equals(expected3)
 
     def test_infer_lists(self):
-        if ((Version(np.__version__) >= Version("1.25.0.dev0")) and
-                (Version(pd.__version__) < Version("2.0.0"))):
-            # TODO: regression in pandas with numpy 1.25dev
-            # https://github.com/pandas-dev/pandas/issues/50360
-            pytest.skip("Regression in pandas with numpy 1.25")
         data = OrderedDict([
             ('nan_ints', [[None, 1], [2, 3]]),
             ('ints', [[0, 1], [2, 3]]),
@@ -2118,11 +2107,6 @@ class TestConvertListTypes:
         _check_pandas_roundtrip(df, expected_schema=expected_schema)
 
     def test_to_list_of_structs_pandas(self):
-        if ((Version(np.__version__) >= Version("1.25.0.dev0")) and
-                (Version(pd.__version__) < Version("2.0.0"))):
-            # TODO: regression in pandas with numpy 1.25dev
-            # https://github.com/pandas-dev/pandas/issues/50360
-            pytest.skip("Regression in pandas with numpy 1.25")
         ints = pa.array([1, 2, 3], pa.int32())
         strings = pa.array([['a', 'b'], ['c', 'd'], ['e', 'f']],
                            pa.list_(pa.string()))
@@ -2192,11 +2176,6 @@ class TestConvertListTypes:
             assert result.equals(expected)
 
     def test_nested_large_list(self):
-        if ((Version(np.__version__) >= Version("1.25.0.dev0")) and
-                (Version(pd.__version__) < Version("2.0.0"))):
-            # TODO: regression in pandas with numpy 1.25dev
-            # https://github.com/pandas-dev/pandas/issues/50360
-            pytest.skip("Regression in pandas with numpy 1.25")
         s = (pa.array([[[1, 2, 3], [4]], None],
                       type=pa.large_list(pa.large_list(pa.int64())))
              .to_pandas())
@@ -2590,7 +2569,8 @@ class TestZeroCopyConversion:
     def test_zero_copy_dictionaries(self):
         arr = pa.DictionaryArray.from_arrays(
             np.array([0, 0]),
-            np.array([5]))
+            np.array([5], dtype="int64"),
+        )
 
         result = arr.to_pandas(zero_copy_only=True)
         values = pd.Categorical([5, 5])
@@ -2950,11 +2930,11 @@ def _fully_loaded_dataframe_example():
 
 @pytest.mark.parametrize('columns', ([b'foo'], ['foo']))
 def test_roundtrip_with_bytes_unicode(columns):
-    if Version("2.0.0.dev0") <= Version(pd.__version__) < Version("2.0.0"):
-        # TODO: regression in pandas, should be fixed before final 2.0.0
+    if Version("2.0.0") <= Version(pd.__version__) < Version("2.1.0"):
+        # TODO: regression in pandas, hopefully fixed in next version
         # https://issues.apache.org/jira/browse/ARROW-18394
         # https://github.com/pandas-dev/pandas/issues/50127
-        pytest.skip("Regression in pandas 2.0.0.dev")
+        pytest.skip("Regression in pandas 2.0.0")
 
     df = pd.DataFrame(columns=columns)
     table1 = pa.Table.from_pandas(df)
@@ -2962,40 +2942,6 @@ def test_roundtrip_with_bytes_unicode(columns):
     assert table1.equals(table2)
     assert table1.schema.equals(table2.schema)
     assert table1.schema.metadata == table2.schema.metadata
-
-
-def _check_serialize_components_roundtrip(pd_obj):
-    with pytest.warns(FutureWarning):
-        ctx = pa.default_serialization_context()
-
-    with pytest.warns(FutureWarning):
-        components = ctx.serialize(pd_obj).to_components()
-    with pytest.warns(FutureWarning):
-        deserialized = ctx.deserialize_components(components)
-
-    if isinstance(pd_obj, pd.DataFrame):
-        tm.assert_frame_equal(pd_obj, deserialized)
-    else:
-        tm.assert_series_equal(pd_obj, deserialized)
-
-
-@pytest.mark.skipif(
-    Version('1.16.0') <= Version(np.__version__) < Version('1.16.1'),
-    reason='Until numpy/numpy#12745 is resolved')
-def test_serialize_deserialize_pandas():
-    # ARROW-1784, serialize and deserialize DataFrame by decomposing
-    # BlockManager
-    df = _fully_loaded_dataframe_example()
-    _check_serialize_components_roundtrip(df)
-
-
-def test_serialize_deserialize_empty_pandas():
-    # ARROW-7996, serialize and deserialize empty pandas objects
-    df = pd.DataFrame({'col1': [], 'col2': [], 'col3': []})
-    _check_serialize_components_roundtrip(df)
-
-    series = pd.Series([], dtype=np.float32, name='col')
-    _check_serialize_components_roundtrip(series)
 
 
 def _pytime_from_micros(val):
