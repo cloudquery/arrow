@@ -343,6 +343,21 @@ func (a *SparseUnion) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+func (a *SparseUnion) Value(i int) string {
+	fieldList := a.unionType.Fields()
+	field := fieldList[a.ChildID(i)]
+	f := a.Field(a.ChildID(i))
+	return fmt.Sprintf("{%s=%v}", field.Name, f.GetOneForMarshal(i))
+}
+
+func (a *SparseUnion) ValueStr(i int) string {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	if err := enc.Encode(a.GetOneForMarshal(i)); err != nil {
+		panic(err)
+	}
+	return buf.String()
+}
 func (a *SparseUnion) String() string {
 	var b strings.Builder
 	b.WriteByte('[')
@@ -599,6 +614,15 @@ func (a *DenseUnion) MarshalJSON() ([]byte, error) {
 	}
 	buf.WriteByte(']')
 	return buf.Bytes(), nil
+}
+
+func (a *DenseUnion) ValueStr(i int) string {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	if err := enc.Encode(a.GetOneForMarshal(i)); err != nil {
+		panic(err)
+	}
+	return buf.String()
 }
 
 func (a *DenseUnion) String() string {
@@ -987,6 +1011,11 @@ func (b *SparseUnionBuilder) Unmarshal(dec *json.Decoder) error {
 	return nil
 }
 
+func (b *SparseUnionBuilder) AppendValueFromString(s string) error {
+	dec := json.NewDecoder(strings.NewReader(s))
+	return b.UnmarshalOne(dec)
+}
+
 func (b *SparseUnionBuilder) UnmarshalOne(dec *json.Decoder) error {
 	t, err := dec.Token()
 	if err != nil {
@@ -1230,6 +1259,11 @@ func (b *DenseUnionBuilder) Unmarshal(dec *json.Decoder) error {
 		}
 	}
 	return nil
+}
+
+func (d *DenseUnionBuilder) AppendValueFromString(s string) error {
+	dec := json.NewDecoder(strings.NewReader(s))
+	return d.UnmarshalOne(dec)
 }
 
 func (b *DenseUnionBuilder) UnmarshalOne(dec *json.Decoder) error {

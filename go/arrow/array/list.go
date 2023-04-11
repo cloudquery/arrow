@@ -52,6 +52,13 @@ func NewListData(data arrow.ArrayData) *List {
 
 func (a *List) ListValues() arrow.Array { return a.values }
 
+func (a *List) ValueStr(i int) string {
+	if !a.IsValid(i) {
+		return NullValueStr
+	}
+	return fmt.Sprintf("%v", a.newListValue(i))
+}
+
 func (a *List) String() string {
 	o := new(strings.Builder)
 	o.WriteString("[")
@@ -175,6 +182,12 @@ func NewLargeListData(data arrow.ArrayData) *LargeList {
 
 func (a *LargeList) ListValues() arrow.Array { return a.values }
 
+func (a *LargeList) ValueStr(i int) string {
+	if !a.IsValid(i) {
+		return NullValueStr
+	}
+	return fmt.Sprintf("%v", a.newListValue(i))
+}
 func (a *LargeList) String() string {
 	o := new(strings.Builder)
 	o.WriteString("[")
@@ -416,6 +429,9 @@ func (b *baseListBuilder) AppendEmptyValue() {
 	b.Append(true)
 }
 
+// func (b *ListBuilder) AppendFromString(s string) {
+// 	b.AppendFromStringArray([]string{s})
+// }
 func (b *ListBuilder) AppendValues(offsets []int32, valid []bool) {
 	b.Reserve(len(valid))
 	b.offsets.(*Int32Builder).AppendValues(offsets, nil)
@@ -529,6 +545,11 @@ func (b *baseListBuilder) newData() (data *Data) {
 	b.reset()
 
 	return
+}
+
+func (b *baseListBuilder) AppendValueFromString(s string) error {
+	dec := json.NewDecoder(strings.NewReader(s))
+	return b.UnmarshalOne(dec)
 }
 
 func (b *baseListBuilder) UnmarshalOne(dec *json.Decoder) error {

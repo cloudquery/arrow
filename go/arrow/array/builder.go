@@ -61,6 +61,9 @@ type Builder interface {
 	// AppendEmptyValue adds a new zero value of the appropriate type
 	AppendEmptyValue()
 
+	// AppendValueFromString adds a new value from a string. Inverse of array.ValueStr(i int) string
+	AppendValueFromString(string) error
+
 	// Reserve ensures there is enough space for appending n elements
 	// by checking the capacity and calling Resize if necessary.
 	Reserve(n int)
@@ -81,6 +84,7 @@ type Builder interface {
 
 	UnmarshalOne(*json.Decoder) error
 	Unmarshal(*json.Decoder) error
+
 
 	newData() *Data
 }

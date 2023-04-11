@@ -55,6 +55,14 @@ func (a *Boolean) Value(i int) bool {
 	return bitutil.BitIsSet(a.values, a.array.data.offset+i)
 }
 
+func (a *Boolean) ValueStr(i int) string {
+	if a.IsNull(i) {
+		return NullValueStr
+	} else {
+		return fmt.Sprintf("%v", a.Value(i))
+	}
+}
+
 func (a *Boolean) String() string {
 	o := new(strings.Builder)
 	o.WriteString("[")

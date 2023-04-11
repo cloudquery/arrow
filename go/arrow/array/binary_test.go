@@ -50,6 +50,8 @@ func TestBinary(t *testing.T) {
 	assert.Equal(t, []byte("AAA"), a.Value(0))
 	assert.Equal(t, []byte{}, a.Value(1))
 	assert.Equal(t, []byte("BBBB"), a.Value(2))
+	assert.Equal(t, "QUFB", a.ValueString(0))
+	assert.Equal(t, "(null)", a.ValueString(1))
 	a.Release()
 
 	// Test builder reset and NewArray API.
@@ -60,6 +62,8 @@ func TestBinary(t *testing.T) {
 	assert.Equal(t, []byte("AAA"), a.Value(0))
 	assert.Equal(t, []byte{}, a.Value(1))
 	assert.Equal(t, []byte("BBBB"), a.Value(2))
+	assert.Equal(t, "QUFB", a.ValueString(0))
+	assert.Equal(t, "(null)", a.ValueString(1))
 	a.Release()
 
 	b.Release()
@@ -92,6 +96,8 @@ func TestLargeBinary(t *testing.T) {
 	assert.Equal(t, []byte("AAA"), a.Value(0))
 	assert.Equal(t, []byte{}, a.Value(1))
 	assert.Equal(t, []byte("BBBB"), a.Value(2))
+	assert.Equal(t, "QUFB", a.ValueString(0))
+	assert.Equal(t, "(null)", a.ValueString(1))
 	a.Release()
 
 	// Test builder reset and NewArray API.
@@ -102,6 +108,8 @@ func TestLargeBinary(t *testing.T) {
 	assert.Equal(t, []byte("AAA"), a.Value(0))
 	assert.Equal(t, []byte{}, a.Value(1))
 	assert.Equal(t, []byte("BBBB"), a.Value(2))
+	assert.Equal(t, "QUFB", a.ValueString(0))
+	assert.Equal(t, "(null)", a.ValueString(1))
 	a.Release()
 
 	b.Release()
@@ -130,7 +138,7 @@ func TestBinarySliceData(t *testing.T) {
 	vs := make([]string, arr.Len())
 
 	for i := range vs {
-		vs[i] = arr.ValueString(i)
+		vs[i] = arr.ValueStr(i)
 	}
 
 	if got, want := vs, values; !reflect.DeepEqual(got, want) {
@@ -180,7 +188,7 @@ func TestBinarySliceData(t *testing.T) {
 			vs := make([]string, slice.Len())
 
 			for i := range vs {
-				vs[i] = slice.ValueString(i)
+				vs[i] = slice.ValueStr(i)
 			}
 
 			if got, want := vs, tc.want; !reflect.DeepEqual(got, want) {
@@ -216,7 +224,7 @@ func TestBinarySliceDataWithNull(t *testing.T) {
 	vs := make([]string, arr.Len())
 
 	for i := range vs {
-		vs[i] = arr.ValueString(i)
+		vs[i] = arr.ValueStr(i)
 	}
 
 	if got, want := vs, values; !reflect.DeepEqual(got, want) {
@@ -272,7 +280,7 @@ func TestBinarySliceDataWithNull(t *testing.T) {
 			vs := make([]string, slice.Len())
 
 			for i := range vs {
-				vs[i] = slice.ValueString(i)
+				vs[i] = slice.ValueStr(i)
 			}
 
 			if got, want := vs, tc.want; !reflect.DeepEqual(got, want) {
@@ -346,7 +354,7 @@ func TestBinarySliceOutOfBounds(t *testing.T) {
 				}()
 			}
 
-			val = slice.ValueString(tc.index)
+			val = slice.ValueStr(tc.index)
 		})
 	}
 }
