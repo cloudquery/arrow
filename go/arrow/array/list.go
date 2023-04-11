@@ -56,7 +56,13 @@ func (a *List) ValueStr(i int) string {
 	if !a.IsValid(i) {
 		return NullValueStr
 	}
-	return fmt.Sprintf("%v", a.newListValue(i))
+	slice := a.newListValue(i)
+	defer slice.Release()
+	v, err := json.Marshal(slice)
+	if err != nil {
+		panic(err)
+	}
+	return string(v)
 }
 
 func (a *List) String() string {
@@ -186,6 +192,7 @@ func (a *LargeList) ValueStr(i int) string {
 	if !a.IsValid(i) {
 		return NullValueStr
 	}
+	
 	return fmt.Sprintf("%v", a.newListValue(i))
 }
 func (a *LargeList) String() string {
@@ -548,6 +555,10 @@ func (b *baseListBuilder) newData() (data *Data) {
 }
 
 func (b *baseListBuilder) AppendValueFromString(s string) error {
+	if s == NullValueStr {
+		b.AppendNull()
+		return nil
+	}
 	dec := json.NewDecoder(strings.NewReader(s))
 	return b.UnmarshalOne(dec)
 }
