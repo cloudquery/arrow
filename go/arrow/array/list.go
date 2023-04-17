@@ -56,13 +56,7 @@ func (a *List) ValueStr(i int) string {
 	if !a.IsValid(i) {
 		return NullValueStr
 	}
-	slice := a.newListValue(i)
-	defer slice.Release()
-	v, err := json.Marshal(slice)
-	if err != nil {
-		panic(err)
-	}
-	return string(v)
+	return string(a.GetOneForMarshal(i).(json.RawMessage))
 }
 
 func (a *List) String() string {
@@ -192,8 +186,7 @@ func (a *LargeList) ValueStr(i int) string {
 	if !a.IsValid(i) {
 		return NullValueStr
 	}
-	
-	return fmt.Sprintf("%v", a.newListValue(i))
+	return string(a.GetOneForMarshal(i).(json.RawMessage))
 }
 func (a *LargeList) String() string {
 	o := new(strings.Builder)
@@ -436,9 +429,6 @@ func (b *baseListBuilder) AppendEmptyValue() {
 	b.Append(true)
 }
 
-// func (b *ListBuilder) AppendFromString(s string) {
-// 	b.AppendFromStringArray([]string{s})
-// }
 func (b *ListBuilder) AppendValues(offsets []int32, valid []bool) {
 	b.Reserve(len(valid))
 	b.offsets.(*Int32Builder).AppendValues(offsets, nil)
@@ -555,10 +545,6 @@ func (b *baseListBuilder) newData() (data *Data) {
 }
 
 func (b *baseListBuilder) AppendValueFromString(s string) error {
-	if s == NullValueStr {
-		b.AppendNull()
-		return nil
-	}
 	dec := json.NewDecoder(strings.NewReader(s))
 	return b.UnmarshalOne(dec)
 }
