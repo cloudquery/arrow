@@ -21,8 +21,8 @@ import (
 	"math"
 	"strings"
 
-	"github.com/apache/arrow/go/v12/arrow"
-	"github.com/apache/arrow/go/v12/arrow/float16"
+	"github.com/apache/arrow/go/v13/arrow"
+	"github.com/apache/arrow/go/v13/arrow/float16"
 )
 
 // RecordEqual reports whether the two provided records are equal.
