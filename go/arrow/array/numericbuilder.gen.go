@@ -2296,6 +2296,14 @@ func (b *TimestampBuilder) Release() {
 	}
 }
 
+func (b *TimestampBuilder) AppendTime(t time.Time) {
+	ts, err := arrow.TimestampFromTime(t, b.dtype.Unit)
+	if err != nil {
+		panic(err)
+	}
+	b.Append(ts)
+}
+
 func (b *TimestampBuilder) Append(v arrow.Timestamp) {
 	b.Reserve(1)
 	b.UnsafeAppend(v)

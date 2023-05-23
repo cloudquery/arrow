@@ -69,6 +69,16 @@ func (b *{{.Name}}Builder) Release() {
 	}
 }
 
+{{ if (eq .Name "Timestamp") -}}
+func (b *TimestampBuilder) AppendTime(t time.Time) {
+	ts, err := arrow.TimestampFromTime(t, b.dtype.Unit)
+	if err != nil {
+		panic(err)
+	}
+	b.Append(ts)
+}
+{{- end }}
+
 func (b *{{.Name}}Builder) Append(v {{or .QualifiedType .Type}}) {
 	b.Reserve(1)
 	b.UnsafeAppend(v)
