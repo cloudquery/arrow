@@ -167,17 +167,8 @@ func TimestampFromStringInLocation(val string, unit TimeUnit, loc *time.Location
 		out = out.In(loc).UTC()
 	}
 
-	switch unit {
-	case Second:
-		return Timestamp(out.Unix()), zoneFmt != "", nil
-	case Millisecond:
-		return Timestamp(out.Unix()*1e3 + int64(out.Nanosecond())/1e6), zoneFmt != "", nil
-	case Microsecond:
-		return Timestamp(out.Unix()*1e6 + int64(out.Nanosecond())/1e3), zoneFmt != "", nil
-	case Nanosecond:
-		return Timestamp(out.UnixNano()), zoneFmt != "", nil
-	}
-	return 0, zoneFmt != "", fmt.Errorf("%w: unexpected timestamp unit: %s", ErrInvalid, unit)
+	ts, err := TimestampFromTime(out, unit)
+	return ts, zoneFmt != "", err
 }
 
 // TimestampFromString parses a string and returns a timestamp for the given unit
@@ -187,16 +178,32 @@ func TimestampFromStringInLocation(val string, unit TimeUnit, loc *time.Location
 // or a space, and [.zzzzzzzzz] can be either left out or up to 9 digits of
 // fractions of a second.
 //
-//	 YYYY-MM-DD
-//	 YYYY-MM-DD[T]HH
-//   YYYY-MM-DD[T]HH:MM
-//   YYYY-MM-DD[T]HH:MM:SS[.zzzzzzzz]
+//	YYYY-MM-DD
+//	YYYY-MM-DD[T]HH
+//	YYYY-MM-DD[T]HH:MM
+//	YYYY-MM-DD[T]HH:MM:SS[.zzzzzzzz]
 //
 // You can also optionally have an ending Z to indicate UTC or indicate a specific
 // timezone using ±HH, ±HHMM or ±HH:MM at the end of the string.
 func TimestampFromString(val string, unit TimeUnit) (Timestamp, error) {
 	tm, _, err := TimestampFromStringInLocation(val, unit, time.UTC)
 	return tm, err
+}
+
+// TimestampFromTime allows converting time.Time to Timestamp
+func TimestampFromTime(val time.Time, unit TimeUnit) (Timestamp, error) {
+	switch unit {
+	case Second:
+		return Timestamp(val.Unix()), nil
+	case Millisecond:
+		return Timestamp(val.Unix()*1e3 + int64(val.Nanosecond())/1e6), nil
+	case Microsecond:
+		return Timestamp(val.Unix()*1e6 + int64(val.Nanosecond())/1e3), nil
+	case Nanosecond:
+		return Timestamp(val.UnixNano()), nil
+	default:
+		return 0, fmt.Errorf("%w: unexpected timestamp unit: %s", ErrInvalid, unit)
+	}
 }
 
 func (t Timestamp) ToTime(unit TimeUnit) time.Time {
