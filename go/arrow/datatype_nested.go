@@ -409,6 +409,9 @@ func (t *MapType) Elem() DataType { return t.value.Elem() }
 // ElemField returns the MapType's element field (if treating MapType as ListLikeType)
 func (t *MapType) ElemField() Field { return Field{Name: "entries", Type: t.Elem()} }
 
+// ElemField returns the MapType's element field (if treating MapType as ListLikeType)
+func (t *MapType) ElemField() Field { return t.ValueField() }
+
 func (t *MapType) SetItemNullable(nullable bool) {
 	t.value.Elem().(*StructType).fields[1].Nullable = nullable
 }
