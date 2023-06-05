@@ -17,7 +17,6 @@
 package memory
 
 import (
-	"fmt"
 	"os"
 	"runtime"
 	"strconv"
@@ -107,7 +106,7 @@ func (a *CheckedAllocator) Free(b []byte) {
 const (
 	defAllocFrames       = 4
 	defReallocFrames     = 3
-	defMaxRetainedFrames = 0
+	defMaxRetainedFrames = 10
 )
 
 // Use the environment variables ARROW_CHECKED_ALLOC_FRAMES and ARROW_CHECKED_REALLOC_FRAMES
@@ -161,13 +160,15 @@ func (a *CheckedAllocator) AssertSize(t TestingT, sz int) {
 			}
 			callersMsg.WriteString("\t")
 			callersMsg.WriteString(frame.Function)
-			callersMsg.WriteString(fmt.Sprintf(" line %d", frame.Line))
+			callersMsg.WriteString("\n\t\t")
+			callersMsg.WriteString(frame.File + ":" + strconv.Itoa(frame.Line))
 			callersMsg.WriteString("\n")
 			if !more {
 				break
 			}
 		}
-		t.Errorf("LEAK of %d bytes FROM %s line %d\n%v", info.sz, f.Name(), info.line, callersMsg.String())
+		file, line := f.FileLine(info.pc)
+		t.Errorf("LEAK of %d bytes FROM %s:%d\n%v", info.sz, file, line, callersMsg.String())
 		return true
 	})
 

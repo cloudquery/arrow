@@ -320,6 +320,7 @@ func writeTableToBuffer(t *testing.T, mem memory.Allocator, tbl arrow.Table, row
 }
 
 func simpleRoundTrip(t *testing.T, tbl arrow.Table, rowGroupSize int64) {
+	t.Helper()
 	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer mem.AssertSize(t, 0)
 
@@ -338,6 +339,7 @@ func simpleRoundTrip(t *testing.T, tbl arrow.Table, rowGroupSize int64) {
 
 		chunked, err := crdr.NextBatch(tbl.NumRows())
 		require.NoError(t, err)
+		defer chunked.Release()
 
 		require.EqualValues(t, tbl.NumRows(), chunked.Len())
 
@@ -399,12 +401,14 @@ func TestArrowReadWriteTableChunkedCols(t *testing.T) {
 	defer arr.Release()
 
 	offset := int64(0)
-	chunks := make([]arrow.Array, 0)
-	for _, chnksize := range chunkSizes {
-		chk := array.NewSlice(arr, offset, offset+int64(chnksize))
-		defer chk.Release()
-		defer chk.Release() // for NewChunked below
-		chunks = append(chunks, chk)
+	chunks := make([]arrow.Array, len(chunkSizes))
+	defer func() {
+		for _, chunk := range chunks {
+			chunk.Release()
+		}
+	}()
+	for i, size := range chunkSizes {
+		chunks[i] = array.NewSlice(arr, offset, offset+int64(size))
 	}
 
 	sc := arrow.NewSchema([]arrow.Field{{Name: "field", Type: arr.DataType(), Nullable: true}}, nil)
@@ -412,7 +416,10 @@ func TestArrowReadWriteTableChunkedCols(t *testing.T) {
 	chk := arrow.NewChunked(arr.DataType(), chunks)
 	defer chk.Release()
 
-	tbl := array.NewTable(sc, []arrow.Column{*arrow.NewColumn(sc.Field(0), chk)}, -1)
+	col := arrow.NewColumn(sc.Field(0), chk)
+	defer col.Release()
+
+	tbl := array.NewTable(sc, []arrow.Column{*col}, -1)
 	defer tbl.Release()
 
 	simpleRoundTrip(t, tbl, 2)
@@ -993,6 +1000,7 @@ func (ps *ParquetIOTestSuite) readAndCheckSingleColumnFile(mem memory.Allocator,
 
 	chunked, err := cr.NextBatch(smallSize)
 	ps.NoError(err)
+	defer chunked.Release()
 
 	ps.Len(chunked.Chunks(), 1)
 	ps.NotNil(chunked.Chunk(0))
@@ -1040,10 +1048,7 @@ func (ps *ParquetIOTestSuite) TestSingleColumnRequiredWrite() {
 	}
 }
 
-func (ps *ParquetIOTestSuite) roundTripTable(_ memory.Allocator, expected arrow.Table, storeSchema bool) {
-	mem := memory.NewCheckedAllocator(memory.DefaultAllocator) // FIXME: currently overriding allocator to isolate leaks between roundTripTable and caller
-	//defer mem.AssertSize(ps.T(), 0)                            // FIXME: known leak
-
+func (ps *ParquetIOTestSuite) roundTripTable(mem memory.Allocator, expected arrow.Table, storeSchema bool) {
 	var buf bytes.Buffer
 	var props pqarrow.ArrowWriterProperties
 	if storeSchema {

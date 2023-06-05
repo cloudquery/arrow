@@ -18,6 +18,7 @@ package pqarrow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -31,7 +32,6 @@ import (
 	"github.com/apache/arrow/go/v13/parquet/file"
 	"github.com/apache/arrow/go/v13/parquet/schema"
 	"golang.org/x/sync/errgroup"
-	"golang.org/x/xerrors"
 )
 
 type itrFactory func(int, *file.Reader) *columnIterator
@@ -452,7 +452,7 @@ func (fr *FileReader) GetRecordReader(ctx context.Context, colIndices, rowGroups
 	}
 
 	if len(readers) == 0 {
-		return nil, xerrors.New("no leaf column readers matched col indices")
+		return nil, errors.New("no leaf column readers matched col indices")
 	}
 
 	nrows := int64(0)
@@ -474,7 +474,7 @@ func (fr *FileReader) getReader(ctx context.Context, field *SchemaField, arrowFi
 	rctx := readerCtxFromContext(ctx)
 	if len(field.Children) == 0 {
 		if !field.IsLeaf() {
-			return nil, xerrors.New("parquet non-leaf node has no children")
+			return nil, errors.New("parquet non-leaf node has no children")
 		}
 		if rctx.filterLeaves && !rctx.includesLeaf(field.ColIndex) {
 			return nil, nil
@@ -486,7 +486,7 @@ func (fr *FileReader) getReader(ctx context.Context, field *SchemaField, arrowFi
 
 	switch arrowField.Type.ID() {
 	case arrow.EXTENSION:
-		return nil, xerrors.New("extension type not implemented")
+		return nil, errors.New("extension type not implemented")
 	case arrow.STRUCT:
 
 		childReaders := make([]*ColumnReader, len(field.Children))
@@ -534,6 +534,8 @@ func (fr *FileReader) getReader(ctx context.Context, field *SchemaField, arrowFi
 		filtered := arrow.Field{Name: arrowField.Name, Nullable: arrowField.Nullable,
 			Metadata: arrowField.Metadata, Type: arrow.StructOf(childFields...)}
 		out = newStructReader(&rctx, &filtered, field.LevelInfo, childReaders, fr.Props)
+		// newStructReader handles childReaders, so we don't call release here
+
 	case arrow.LIST, arrow.FIXED_SIZE_LIST, arrow.MAP:
 		child := field.Children[0]
 		childReader, err := fr.getReader(ctx, &child, *child.Field)
@@ -664,16 +666,19 @@ func (r *recordReader) next() bool {
 		if err != nil {
 			return err
 		}
+		defer data.Release()
 
 		if data.Len() == 0 {
 			return io.EOF
 		}
 
-		arrdata, err := chunksToSingle(data)
+		chunk, err := chunksToSingle(data)
 		if err != nil {
 			return err
 		}
-		cols[idx] = array.MakeFromData(arrdata)
+		defer chunk.Release() // because array.MakeFromData will retain
+
+		cols[idx] = array.MakeFromData(chunk)
 		return nil
 	}
 
