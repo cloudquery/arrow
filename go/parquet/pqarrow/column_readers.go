@@ -474,7 +474,12 @@ func newFixedSizeListReader(rctx *readerCtx, field *arrow.Field, info file.Level
 // helper function to combine chunks into a single array.
 //
 // nested data conversion for chunked array outputs not yet implemented
-func chunksToSingle(chunked *arrow.Chunked) (arrow.ArrayData, error) {
+func chunksToSingle(chunked *arrow.Chunked) (data arrow.ArrayData, err error) {
+	defer func() {
+		if data != nil {
+			array.AssertData("chunksToSingle", data.(*array.Data))
+		}
+	}()
 	switch len(chunked.Chunks()) {
 	case 0:
 		return array.NewData(chunked.DataType(), 0, []*memory.Buffer{nil, nil}, nil, 0, 0), nil
@@ -487,7 +492,10 @@ func chunksToSingle(chunked *arrow.Chunked) (arrow.ArrayData, error) {
 }
 
 // create a chunked arrow array from the raw record data
-func transferColumnData(rdr file.RecordReader, valueType arrow.DataType, descr *schema.Column) (*arrow.Chunked, error) {
+func transferColumnData(rdr file.RecordReader, valueType arrow.DataType, descr *schema.Column) (ccc *arrow.Chunked, err error) {
+	defer func() {
+		assertBuildArray("transferColumnData", ccc, err)
+	}()
 	dt := valueType
 	if valueType.ID() == arrow.EXTENSION {
 		dt = valueType.(arrow.ExtensionType).StorageType()
@@ -576,7 +584,13 @@ func transferBinary(rdr file.RecordReader, dt arrow.DataType) *arrow.Chunked {
 		etype := dt.(arrow.ExtensionType)
 		for idx, chk := range chunks {
 			chunks[idx] = array.NewExtensionArrayWithStorage(etype, chk)
-			chk.Release() // NewExtensionArrayWithStorage will call retain on chk, so it still needs to be released
+			// we need to release chk & buffers, as NewExtensionArrayWithStorage will retain both of them
+			chk.Release()
+			for _, buff := range chk.Data().Buffers() {
+				if buff != nil {
+					buff.Release()
+				}
+			}
 			defer chunks[idx].Release()
 		}
 	case dt == arrow.BinaryTypes.String || dt == arrow.BinaryTypes.LargeString:
