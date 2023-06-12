@@ -15,27 +15,14 @@
 # specific language governing permissions and limitations
 # under the License.
 
-brew "aws-sdk-cpp"
-brew "bash"
-brew "boost"
-brew "brotli"
-brew "c-ares"
-brew "ccache"
-brew "cmake"
-brew "flatbuffers"
-brew "git"
-brew "glog"
-brew "googletest"
-brew "grpc@1.54"
-brew "llvm@14"
-brew "lz4"
-brew "ninja"
-brew "openssl@1.1"
-brew "protobuf@21"
-brew "python"
-brew "rapidjson"
-brew "snappy"
-brew "thrift"
-brew "wget"
-brew "xsimd"
-brew "zstd"
+module Parquet
+  class ArrowFileReader
+    def each_row_group
+      return to_enum(__method__) {n_row_groups} unless block_given?
+
+      n_row_groups.times do |i|
+        yield(read_row_group(i))
+      end
+    end
+  end
+end
