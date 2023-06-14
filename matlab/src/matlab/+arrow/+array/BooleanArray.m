@@ -13,21 +13,32 @@
 % implied.  See the License for the specific language governing
 % permissions and limitations under the License.
 
-classdef Int32Array < arrow.array.NumericArray
-% arrow.array.Int32Array
+classdef BooleanArray < arrow.array.Array
+% arrow.array.BooleanArray
 
-    properties (Access=protected)
-        NullSubstitutionValue = int32(0)
+    properties (Hidden, SetAccess=private)
+        NullSubstitionValue = false;
     end
 
     methods
-        function obj = Int32Array(data, varargin)
-              obj@arrow.array.NumericArray(data, "int32", ...
-                "arrow.array.proxy.Int32Array", varargin{:});
+        function obj = BooleanArray(data, opts)
+            arguments
+                data
+                opts.InferNulls(1,1) logical = true
+                opts.Valid
+            end
+            arrow.args.validateTypeAndShape(data, "logical");
+            validElements = arrow.args.parseValidElements(data, opts);
+            obj@arrow.array.Array("Name", "arrow.array.proxy.BooleanArray", "ConstructorArguments", {data, validElements});
         end
 
-        function data = int32(obj)
+        function data = logical(obj)
             data = obj.toMATLAB();
+        end
+
+        function matlabArray = toMATLAB(obj)
+            matlabArray = obj.Proxy.toMATLAB();
+            matlabArray(~obj.Valid) = obj.NullSubstitionValue;
         end
     end
 end
