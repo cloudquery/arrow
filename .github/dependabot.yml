@@ -15,12 +15,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
-# CMake files
-CMakeFiles/*
-CMakeCache.txt
-build/
-
-# MEX files
-*.mex*
-# MATLAB autosave files
-*.asv
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "MINOR: [CI] "
