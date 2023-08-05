@@ -17,27 +17,31 @@
 
 #pragma once
 
-#include "arrow/record_batch.h"
+// arrow::Schema is defined in type.h.
+#include "arrow/type.h"
 
 #include "libmexclass/proxy/Proxy.h"
 
 namespace arrow::matlab::tabular::proxy {
 
-    class RecordBatch : public libmexclass::proxy::Proxy {
+    class Schema : public libmexclass::proxy::Proxy {
         public:
-            RecordBatch(std::shared_ptr<arrow::RecordBatch> record_batch);
-        
-            virtual ~RecordBatch() {}
+            Schema(std::shared_ptr<arrow::Schema> Schema);
+
+            virtual ~Schema() {}
 
             static libmexclass::proxy::MakeResult make(const libmexclass::proxy::FunctionArguments& constructor_arguments);
-    
-        protected:
-            void toString(libmexclass::proxy::method::Context& context);
-            void numColumns(libmexclass::proxy::method::Context& context);
-            void columnNames(libmexclass::proxy::method::Context& context);
-            void getColumnByIndex(libmexclass::proxy::method::Context& context);
 
-            std::shared_ptr<arrow::RecordBatch> record_batch;
+            std::shared_ptr<arrow::Schema> unwrap();
+
+        protected:
+            void getFieldByIndex(libmexclass::proxy::method::Context& context);
+            void getFieldByName(libmexclass::proxy::method::Context& context);
+            void getNumFields(libmexclass::proxy::method::Context& context);
+            void getFieldNames(libmexclass::proxy::method::Context& context);
+            void toString(libmexclass::proxy::method::Context& context);
+
+            std::shared_ptr<arrow::Schema> schema;
     };
 
 }
