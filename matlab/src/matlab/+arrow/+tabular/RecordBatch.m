@@ -45,20 +45,24 @@ classdef RecordBatch < matlab.mixin.CustomDisplay & ...
         end
 
         function arrowArray = column(obj, idx)
-            if ~isempty(idx) && isscalar(idx) && isnumeric(idx) && idx >= 1
-                args = struct(Index=int32(idx));
-                [proxyID, typeID] = obj.Proxy.getColumnByIndex(args);
-                traits = arrow.type.traits.traits(arrow.type.ID(typeID));
-                proxy = libmexclass.proxy.Proxy(Name=traits.ArrayProxyClassName, ID=proxyID);
-                arrowArray = traits.ArrayConstructor(proxy);
-            else
-                errid = "arrow:tabular:recordbatch:UnsupportedColumnIndexType";
-                msg = "Index must be a positive scalar integer.";
-                error(errid, msg);
-            end
+            import arrow.internal.validate.*
+
+            idx = index.numeric(idx, "int32");
+            % TODO: Consider vectorizing column() in the future to support
+            % extracting multiple columns at once.
+            validateattributes(idx, "int32", "scalar");
+
+            args = struct(Index=idx);
+            [proxyID, typeID] = obj.Proxy.getColumnByIndex(args);                
+            
+            traits = arrow.type.traits.traits(arrow.type.ID(typeID));
+            proxy = libmexclass.proxy.Proxy(Name=traits.ArrayProxyClassName, ID=proxyID);
+            arrowArray = traits.ArrayConstructor(proxy);
         end
 
         function T = table(obj)
+            import arrow.tabular.internal.*
+
             numColumns = obj.NumColumns;
             matlabArrays = cell(1, numColumns);
             
@@ -67,10 +71,12 @@ classdef RecordBatch < matlab.mixin.CustomDisplay & ...
                 matlabArrays{ii} = toMATLAB(arrowArray);
             end
 
-            variableNames = matlab.lang.makeUniqueStrings(obj.ColumnNames);
-            % NOTE: Does not currently handle edge cases like ColumnNames
-            %       matching the table DimensionNames.
-            T = table(matlabArrays{:}, VariableNames=variableNames);
+            validVariableNames = makeValidVariableNames(obj.ColumnNames);
+            validDimensionNames = makeValidDimensionNames(validVariableNames);
+
+            T = table(matlabArrays{:}, ...
+                VariableNames=validVariableNames, ...
+                DimensionNames=validDimensionNames);
         end
 
         function T = toMATLAB(obj)
