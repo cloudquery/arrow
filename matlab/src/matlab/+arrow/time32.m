@@ -13,18 +13,13 @@
 % implied.  See the License for the specific language governing
 % permissions and limitations under the License.
 
-function validate(proxy, expectedName)
-%VALIDATE Throws an arrow:matlab:ProxyNameMismatch error if
-% proxy.Name and expectedName are not equal.
+function type = time32(opts)
+%TIME32 Creates an arrow.type.Time32Type object
     arguments
-        proxy(1, 1) libmexclass.proxy.Proxy
-        expectedName(1, 1) string {mustBeNonmissing, mustBeNonzeroLengthText}
+        opts.TimeUnit(1, 1) arrow.type.TimeUnit {timeUnit("Time32", opts.TimeUnit)} = arrow.type.TimeUnit.Second
     end
-
-    if proxy.Name ~= expectedName
-        errid = "arrow:proxy:ProxyNameMismatch";
-        msg = compose("The Name property of the Proxy provided is ""%s"", " + ...
-            "but expected it to be ""%s"".", proxy.Name, expectedName);
-        error(errid, msg);
-    end
+    import arrow.internal.validate.temporal.timeUnit
+    args = struct(TimeUnit=string(opts.TimeUnit));
+    proxy = arrow.internal.proxy.create("arrow.type.proxy.Time32Type", args);
+    type = arrow.type.Time32Type(proxy);
 end

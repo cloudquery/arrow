@@ -22,19 +22,16 @@
 
 namespace arrow::matlab::type::proxy {
 
-class TimestampType : public arrow::matlab::type::proxy::FixedWidthType {
-        
-    public:
-        TimestampType(std::shared_ptr<arrow::TimestampType> timestamp_type);
+class Time32Type : public arrow::matlab::type::proxy::FixedWidthType {
 
-        ~TimestampType() {}
+    public:
+        Time32Type(std::shared_ptr<arrow::Time32Type> time32_type);
+
+        ~Time32Type() {}
 
         static libmexclass::proxy::MakeResult make(const libmexclass::proxy::FunctionArguments& constructor_arguments);
 
     protected:
-
-        void getTimeZone(libmexclass::proxy::method::Context& context);
-
         void getTimeUnit(libmexclass::proxy::method::Context& context);
 };
 

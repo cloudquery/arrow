@@ -1,3 +1,5 @@
+%TEMPORALTYPE Parent class of all temporal types.
+
 % Licensed to the Apache Software Foundation (ASF) under one or more
 % contributor license agreements.  See the NOTICE file distributed with
 % this work for additional information regarding copyright ownership.
@@ -13,18 +15,23 @@
 % implied.  See the License for the specific language governing
 % permissions and limitations under the License.
 
-function validate(proxy, expectedName)
-%VALIDATE Throws an arrow:matlab:ProxyNameMismatch error if
-% proxy.Name and expectedName are not equal.
-    arguments
-        proxy(1, 1) libmexclass.proxy.Proxy
-        expectedName(1, 1) string {mustBeNonmissing, mustBeNonzeroLengthText}
+classdef TemporalType < arrow.type.FixedWidthType
+
+    properties(Dependent, GetAccess=public, SetAccess=private)
+        TimeUnit
     end
 
-    if proxy.Name ~= expectedName
-        errid = "arrow:proxy:ProxyNameMismatch";
-        msg = compose("The Name property of the Proxy provided is ""%s"", " + ...
-            "but expected it to be ""%s"".", proxy.Name, expectedName);
-        error(errid, msg);
+    methods
+        function obj = TemporalType(proxy)
+            arguments
+                proxy(1, 1) libmexclass.proxy.Proxy
+            end
+            obj@arrow.type.FixedWidthType(proxy);
+        end
+
+        function timeUnit = get.TimeUnit(obj)
+            timeUnitValue = obj.Proxy.getTimeUnit();
+            timeUnit = arrow.type.TimeUnit(timeUnitValue);
+        end
     end
 end
