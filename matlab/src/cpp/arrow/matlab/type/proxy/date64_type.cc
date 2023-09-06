@@ -15,54 +15,17 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#pragma once
+#include "arrow/matlab/type/proxy/date64_type.h"
 
-namespace arrow {
-namespace ipc {
+namespace arrow::matlab::type::proxy {
 
-enum class MetadataVersion : char {
-  /// 0.1.0
-  V1,
+    Date64Type::Date64Type(std::shared_ptr<arrow::Date64Type> date64_type) : DateType(std::move(date64_type)) {}
 
-  /// 0.2.0
-  V2,
+    libmexclass::proxy::MakeResult Date64Type::make(const libmexclass::proxy::FunctionArguments& constructor_arguments) {
+        using Date64TypeProxy = arrow::matlab::type::proxy::Date64Type;
 
-  /// 0.3.0 to 0.7.1
-  V3,
-
-  /// 0.8.0 to 0.17.0
-  V4,
-
-  /// >= 1.0.0
-  V5
-};
-
-class Message;
-enum class MessageType {
-  NONE,
-  SCHEMA,
-  DICTIONARY_BATCH,
-  RECORD_BATCH,
-  TENSOR,
-  SPARSE_TENSOR
-};
-
-struct IpcReadOptions;
-struct IpcWriteOptions;
-
-class MessageReader;
-
-class RecordBatchStreamReader;
-class RecordBatchFileReader;
-class RecordBatchWriter;
-
-class DictionaryFieldMapper;
-class DictionaryMemo;
-
-namespace feather {
-
-class Reader;
-
-}  // namespace feather
-}  // namespace ipc
-}  // namespace arrow
+        const auto type = arrow::date64();
+        const auto date64_type = std::static_pointer_cast<arrow::Date64Type>(type);
+        return std::make_shared<Date64TypeProxy>(std::move(date64_type));
+    }
+}
