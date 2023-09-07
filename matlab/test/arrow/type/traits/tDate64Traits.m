@@ -1,3 +1,5 @@
+%TDATE64TRAITS Unit tests for arrow.type.traits.Date64Traits
+
 % Licensed to the Apache Software Foundation (ASF) under one or more
 % contributor license agreements.  See the NOTICE file distributed with
 % this work for additional information regarding copyright ownership.
@@ -13,23 +15,19 @@
 % implied.  See the License for the specific language governing
 % permissions and limitations under the License.
 
-classdef BooleanType < arrow.type.FixedWidthType
-%BOOLEANTYPE Type class for boolean data.
-    
-    methods 
-        function obj = BooleanType(proxy)
-            arguments
-                proxy(1, 1) libmexclass.proxy.Proxy {validate(proxy, "arrow.type.proxy.BooleanType")}
-            end
-            import arrow.internal.proxy.validate
-            obj@arrow.type.FixedWidthType(proxy);
-        end
+classdef tDate64Traits < hTypeTraits
+
+    properties
+        TraitsConstructor = @arrow.type.traits.Date64Traits
+        ArrayConstructor = @arrow.array.Date64Array
+        ArrayClassName = "arrow.array.Date64Array"
+        ArrayProxyClassName = "arrow.array.proxy.Date64Array"
+        ArrayStaticConstructor = @arrow.array.Date64Array.fromMATLAB
+        TypeConstructor = @arrow.type.Date64Type
+        TypeClassName = "arrow.type.Date64Type"
+        TypeProxyClassName = "arrow.type.proxy.Date64Type"
+        MatlabConstructor = @datetime
+        MatlabClassName = "datetime"
     end
 
-    methods (Access=protected)
-        function groups = getDisplayPropertyGroups(~)
-            targets = "ID";
-            groups = matlab.mixin.util.PropertyGroup(targets);
-        end
-    end
 end

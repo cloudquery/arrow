@@ -324,11 +324,14 @@ if(ARROW_WITH_ZSTD)
   list(APPEND ARROW_SRCS util/compression_zstd.cc)
 endif()
 
+set(ARROW_TESTING_SHARED_LINK_LIBS arrow::flatbuffers rapidjson::rapidjson arrow_shared
+                                   ${ARROW_GTEST_GTEST})
+set(ARROW_TESTING_STATIC_LINK_LIBS arrow::flatbuffers rapidjson::rapidjson arrow_static
+                                   ${ARROW_GTEST_GTEST})
+
 set(ARROW_TESTING_SRCS
     io/test_common.cc
     ipc/test_common.cc
-    testing/json_integration.cc
-    testing/json_internal.cc
     testing/gtest_util.cc
     testing/random.cc
     testing/generator.cc
@@ -369,6 +372,10 @@ endif()
 #
 # Configure the base Arrow libraries
 #
+
+if(ARROW_BUILD_INTEGRATION OR ARROW_BUILD_TESTS)
+  list(APPEND ARROW_SRCS integration/json_integration.cc integration/json_internal.cc)
+endif()
 
 if(ARROW_CSV)
   list(APPEND
@@ -503,6 +510,8 @@ if(ARROW_FILESYSTEM)
                                            SKIP_UNITY_BUILD_INCLUSION ON)
   endif()
 
+  list(APPEND ARROW_TESTING_SHARED_LINK_LIBS ${ARROW_GTEST_GMOCK})
+  list(APPEND ARROW_TESTING_STATIC_LINK_LIBS ${ARROW_GTEST_GMOCK})
   list(APPEND ARROW_TESTING_SRCS filesystem/test_util.cc)
 endif()
 
@@ -710,6 +719,9 @@ if(ARROW_TESTING)
   if(GTest_SOURCE STREQUAL "SYSTEM")
     list(APPEND ARROW_TESTING_SHARED_INSTALL_INTERFACE_LIBS ${ARROW_GTEST_GTEST})
     list(APPEND ARROW_TESTING_STATIC_INSTALL_INTERFACE_LIBS ${ARROW_GTEST_GTEST})
+  else()
+    list(APPEND ARROW_TESTING_SHARED_INSTALL_INTERFACE_LIBS ArrowTesting::gtest)
+    list(APPEND ARROW_TESTING_STATIC_INSTALL_INTERFACE_LIBS ArrowTesting::gtest)
   endif()
   add_arrow_lib(arrow_testing
                 CMAKE_PACKAGE_NAME
@@ -725,17 +737,11 @@ if(ARROW_TESTING)
                 DEPENDENCIES
                 arrow_test_dependencies
                 SHARED_LINK_LIBS
-                arrow::flatbuffers
-                rapidjson::rapidjson
-                arrow_shared
-                ${ARROW_GTEST_GTEST}
+                ${ARROW_TESTING_SHARED_LINK_LIBS}
                 SHARED_INSTALL_INTERFACE_LIBS
                 ${ARROW_TESTING_SHARED_INSTALL_INTERFACE_LIBS}
                 STATIC_LINK_LIBS
-                arrow::flatbuffers
-                rapidjson::rapidjson
-                arrow_static
-                ${ARROW_GTEST_GTEST}
+                ${ARROW_TESTING_STATIC_LINK_LIBS}
                 STATIC_INSTALL_INTERFACE_LIBS
                 ${ARROW_TESTING_STATIC_INSTALL_INTERFACE_LIBS})
 
@@ -832,12 +838,15 @@ add_subdirectory(tensor)
 add_subdirectory(util)
 add_subdirectory(vendored)
 
-if(ARROW_CSV)
-  add_subdirectory(csv)
+if(ARROW_BUILD_INTEGRATION OR ARROW_BUILD_TESTS)
+  # We build tests for the JSON integration machinery even if integration
+  # is not enabled, to ensure it's exercised in more builds than just the
+  # integration build.
+  add_subdirectory(integration)
 endif()
 
-if(ARROW_SUBSTRAIT)
-  add_subdirectory(engine)
+if(ARROW_CSV)
+  add_subdirectory(csv)
 endif()
 
 if(ARROW_ACERO)
@@ -871,6 +880,10 @@ endif()
 
 if(ARROW_ORC)
   add_subdirectory(adapters/orc)
+endif()
+
+if(ARROW_SUBSTRAIT)
+  add_subdirectory(engine)
 endif()
 
 if(ARROW_TENSORFLOW)
