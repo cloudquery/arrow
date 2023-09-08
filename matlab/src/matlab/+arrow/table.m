@@ -1,4 +1,4 @@
-%FLOAT32TYPE Type class for float32 data.
+%TABLE Creates an arrow.tabular.Table from a MATLAB table.
 
 % Licensed to the Apache Software Foundation (ASF) under one or more
 % contributor license agreements.  See the NOTICE file distributed with
@@ -14,16 +14,20 @@
 % WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
 % implied.  See the License for the specific language governing
 % permissions and limitations under the License.
-
-classdef Float32Type < arrow.type.NumericType
-    
-    methods 
-        function obj = Float32Type(proxy)
-            arguments
-                proxy(1, 1) libmexclass.proxy.Proxy {validate(proxy, "arrow.type.proxy.Float32Type")}
-            end
-            import arrow.internal.proxy.validate
-            obj@arrow.type.NumericType(proxy);
-        end
+function arrowTable = table(matlabTable)
+    arguments
+        % Use istable instead of the table type specifier here to avoid
+        % ambiguous name parsing issue with MATLAB table type and arrow.table.
+        matlabTable {istable} = table.empty(0, 0)
     end
+
+    arrowArrays = arrow.tabular.internal.decompose(matlabTable);
+    arrayProxyIDs = arrow.array.internal.getArrayProxyIDs(arrowArrays);
+
+    columnNames = string(matlabTable.Properties.VariableNames);
+    args = struct(ArrayProxyIDs=arrayProxyIDs, ColumnNames=columnNames);
+    proxyName = "arrow.tabular.proxy.Table";
+    proxy = arrow.internal.proxy.create(proxyName, args);
+
+    arrowTable = arrow.tabular.Table(proxy);
 end
