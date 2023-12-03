@@ -23,7 +23,7 @@
 # - Maven >= 3.3.9
 # - JDK >=7
 # - gcc >= 4.8
-# - Node.js >= 11.12 (best way is to use nvm)
+# - Node.js >= 18
 # - Go >= 1.19
 # - Docker
 #
@@ -195,8 +195,6 @@ test_apt() {
                 "arm64v8/ubuntu:focal" \
                 "ubuntu:jammy" \
                 "arm64v8/ubuntu:jammy" \
-                "ubuntu:lunar" \
-                "arm64v8/ubuntu:lunar" \
                 "ubuntu:mantic" \
                 "arm64v8/ubuntu:mantic"; do \
     case "${target}" in
