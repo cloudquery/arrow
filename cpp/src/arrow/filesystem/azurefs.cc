@@ -39,7 +39,7 @@ namespace fs {
 // -----------------------------------------------------------------------
 // AzureOptions Implementation
 
-AzureOptions::AzureOptions() {}
+AzureOptions::AzureOptions() = default;
 
 bool AzureOptions::Equals(const AzureOptions& other) const {
   return (account_dfs_url == other.account_dfs_url &&
@@ -115,6 +115,10 @@ struct AzureLocation {
     return parent;
   }
 
+  Result<AzureLocation> join(const std::string& stem) const {
+    return FromString(internal::ConcatAbstractPath(all, stem));
+  }
+
   bool has_parent() const { return !path.empty(); }
 
   bool empty() const { return container.empty() && path.empty(); }
@@ -149,6 +153,7 @@ Status ValidateFileLocation(const AzureLocation& location) {
   if (location.path.empty()) {
     return NotAFile(location);
   }
+  ARROW_RETURN_NOT_OK(internal::AssertNoTrailingSlash(location.path));
   return Status::OK();
 }
 
@@ -335,7 +340,7 @@ class ObjectInputFile final : public io::RandomAccessFile {
       }
       return internal::ExceptionToStatus(
           "GetProperties failed for '" + blob_client_->GetUrl() +
-              "' with an unexpected Azure error. Can not initialise an ObjectInputFile "
+              "' with an unexpected Azure error. Cannot initialise an ObjectInputFile "
               "without knowing the file size.",
           exception);
     }
@@ -561,7 +566,7 @@ class ObjectAppendStream final : public io::OutputStream {
         } else {
           return internal::ExceptionToStatus(
               "GetProperties failed for '" + block_blob_client_->GetUrl() +
-                  "' with an unexpected Azure error. Can not initialise an "
+                  "' with an unexpected Azure error. Cannot initialise an "
                   "ObjectAppendStream without knowing whether a file already exists at "
                   "this path, and if it exists, its size.",
               exception);
@@ -815,10 +820,212 @@ class AzureFileSystem::Impl {
     }
   }
 
+ private:
+  template <typename OnContainer>
+  Status VisitContainers(const Azure::Core::Context& context,
+                         OnContainer&& on_container) const {
+    Azure::Storage::Blobs::ListBlobContainersOptions options;
+    try {
+      auto container_list_response =
+          blob_service_client_->ListBlobContainers(options, context);
+      for (; container_list_response.HasPage();
+           container_list_response.MoveToNextPage(context)) {
+        for (const auto& container : container_list_response.BlobContainers) {
+          RETURN_NOT_OK(on_container(container));
+        }
+      }
+    } catch (const Azure::Storage::StorageException& exception) {
+      return internal::ExceptionToStatus("Failed to list account containers.", exception);
+    }
+    return Status::OK();
+  }
+
+  static FileInfo FileInfoFromBlob(const std::string& container,
+                                   const Azure::Storage::Blobs::Models::BlobItem& blob) {
+    auto path = internal::ConcatAbstractPath(container, blob.Name);
+    if (internal::HasTrailingSlash(blob.Name)) {
+      return DirectoryFileInfoFromPath(path);
+    }
+    FileInfo info{std::move(path), FileType::File};
+    info.set_size(blob.BlobSize);
+    info.set_mtime(std::chrono::system_clock::time_point{blob.Details.LastModified});
+    return info;
+  }
+
+  static FileInfo DirectoryFileInfoFromPath(const std::string& path) {
+    return FileInfo{std::string{internal::RemoveTrailingSlash(path)},
+                    FileType::Directory};
+  }
+
+  static std::string_view BasenameView(std::string_view s) {
+    DCHECK(!internal::HasTrailingSlash(s));
+    auto offset = s.find_last_of(internal::kSep);
+    auto result = (offset == std::string_view::npos) ? s : s.substr(offset);
+    DCHECK(!result.empty() && result.back() != internal::kSep);
+    return result;
+  }
+
+  /// \brief List the blobs at the root of a container or some dir in a container.
+  ///
+  /// \pre container_client is the client for the container named like the first
+  /// segment of select.base_dir.
+  Status GetFileInfoWithSelectorFromContainer(
+      const Azure::Storage::Blobs::BlobContainerClient& container_client,
+      const Azure::Core::Context& context, Azure::Nullable<int32_t> page_size_hint,
+      const FileSelector& select, FileInfoVector* acc_results) {
+    ARROW_ASSIGN_OR_RAISE(auto base_location, AzureLocation::FromString(select.base_dir));
+
+    bool found = false;
+    Azure::Storage::Blobs::ListBlobsOptions options;
+    if (internal::IsEmptyPath(base_location.path)) {
+      // If the base_dir is the root of the container, then we want to list all blobs in
+      // the container and the Prefix should be empty and not even include the trailing
+      // slash because the container itself represents the `<container>/` directory.
+      options.Prefix = {};
+      found = true;  // Unless the container itself is not found later!
+    } else {
+      options.Prefix = internal::EnsureTrailingSlash(base_location.path);
+    }
+    options.PageSizeHint = page_size_hint;
+    options.Include = Azure::Storage::Blobs::Models::ListBlobsIncludeFlags::Metadata;
+
+    auto recurse = [&](const std::string& blob_prefix) noexcept -> Status {
+      if (select.recursive && select.max_recursion > 0) {
+        FileSelector sub_select;
+        sub_select.base_dir = internal::ConcatAbstractPath(
+            base_location.container, internal::RemoveTrailingSlash(blob_prefix));
+        sub_select.allow_not_found = true;
+        sub_select.recursive = true;
+        sub_select.max_recursion = select.max_recursion - 1;
+        return GetFileInfoWithSelectorFromContainer(
+            container_client, context, page_size_hint, sub_select, acc_results);
+      }
+      return Status::OK();
+    };
+
+    auto process_blob =
+        [&](const Azure::Storage::Blobs::Models::BlobItem& blob) noexcept {
+          // blob.Name has trailing slash only when Prefix is an empty
+          // directory marker blob for the directory we're listing
+          // from, and we should skip it.
+          if (!internal::HasTrailingSlash(blob.Name)) {
+            acc_results->push_back(FileInfoFromBlob(base_location.container, blob));
+          }
+        };
+    auto process_prefix = [&](const std::string& prefix) noexcept -> Status {
+      const auto path = internal::ConcatAbstractPath(base_location.container, prefix);
+      acc_results->push_back(DirectoryFileInfoFromPath(path));
+      return recurse(prefix);
+    };
+
+    try {
+      auto list_response =
+          container_client.ListBlobsByHierarchy(/*delimiter=*/"/", options, context);
+      for (; list_response.HasPage(); list_response.MoveToNextPage(context)) {
+        if (list_response.Blobs.empty() && list_response.BlobPrefixes.empty()) {
+          continue;
+        }
+        found = true;
+        // Blob and BlobPrefixes are sorted by name, so we can merge-iterate
+        // them to ensure returned results are all sorted.
+        size_t blob_index = 0;
+        size_t blob_prefix_index = 0;
+        while (blob_index < list_response.Blobs.size() &&
+               blob_prefix_index < list_response.BlobPrefixes.size()) {
+          const auto& blob = list_response.Blobs[blob_index];
+          const auto& prefix = list_response.BlobPrefixes[blob_prefix_index];
+          const int cmp = blob.Name.compare(prefix);
+          if (cmp < 0) {
+            process_blob(blob);
+            blob_index += 1;
+          } else if (cmp > 0) {
+            RETURN_NOT_OK(process_prefix(prefix));
+            blob_prefix_index += 1;
+          } else {
+            DCHECK_EQ(blob.Name, prefix);
+            RETURN_NOT_OK(process_prefix(prefix));
+            blob_index += 1;
+            blob_prefix_index += 1;
+            // If the container has an empty dir marker blob and another blob starting
+            // with this blob name as a prefix, the blob doesn't appear in the listing
+            // that also contains the prefix, so AFAICT this branch in unreachable. The
+            // code above is kept just in case, but if this DCHECK(false) is ever reached,
+            // we should refactor this loop to ensure no duplicate entries are ever
+            // reported.
+            DCHECK(false)
+                << "Unexpected blob/prefix name collision on the same listing request";
+          }
+        }
+        for (; blob_index < list_response.Blobs.size(); blob_index++) {
+          process_blob(list_response.Blobs[blob_index]);
+        }
+        for (; blob_prefix_index < list_response.BlobPrefixes.size();
+             blob_prefix_index++) {
+          RETURN_NOT_OK(process_prefix(list_response.BlobPrefixes[blob_prefix_index]));
+        }
+      }
+    } catch (const Azure::Storage::StorageException& exception) {
+      if (exception.ErrorCode == "ContainerNotFound") {
+        found = false;
+      } else {
+        return internal::ExceptionToStatus(
+            "Failed to list blobs in a directory: " + select.base_dir + ": " +
+                container_client.GetUrl(),
+            exception);
+      }
+    }
+
+    return found || select.allow_not_found
+               ? Status::OK()
+               : ::arrow::fs::internal::PathNotFound(select.base_dir);
+  }
+
+ public:
+  Status GetFileInfoWithSelector(const Azure::Core::Context& context,
+                                 Azure::Nullable<int32_t> page_size_hint,
+                                 const FileSelector& select,
+                                 FileInfoVector* acc_results) {
+    ARROW_ASSIGN_OR_RAISE(auto base_location, AzureLocation::FromString(select.base_dir));
+
+    if (base_location.container.empty()) {
+      // Without a container, the base_location is equivalent to the filesystem
+      // root -- `/`. FileSelector::allow_not_found doesn't matter in this case
+      // because the root always exists.
+      auto on_container =
+          [&](const Azure::Storage::Blobs::Models::BlobContainerItem& container) {
+            // Deleted containers are not listed by ListContainers.
+            DCHECK(!container.IsDeleted);
+
+            // Every container is considered a directory.
+            FileInfo info{container.Name, FileType::Directory};
+            info.set_mtime(
+                std::chrono::system_clock::time_point{container.Details.LastModified});
+            acc_results->push_back(std::move(info));
+
+            // Recurse into containers (subdirectories) if requested.
+            if (select.recursive && select.max_recursion > 0) {
+              FileSelector sub_select;
+              sub_select.base_dir = container.Name;
+              sub_select.allow_not_found = true;
+              sub_select.recursive = true;
+              sub_select.max_recursion = select.max_recursion - 1;
+              ARROW_RETURN_NOT_OK(GetFileInfoWithSelector(context, page_size_hint,
+                                                          sub_select, acc_results));
+            }
+            return Status::OK();
+          };
+      return VisitContainers(context, std::move(on_container));
+    }
+
+    auto container_client =
+        blob_service_client_->GetBlobContainerClient(base_location.container);
+    return GetFileInfoWithSelectorFromContainer(container_client, context, page_size_hint,
+                                                select, acc_results);
+  }
+
   Result<std::shared_ptr<ObjectInputFile>> OpenInputFile(const AzureLocation& location,
                                                          AzureFileSystem* fs) {
     RETURN_NOT_OK(ValidateFileLocation(location));
-    ARROW_RETURN_NOT_OK(internal::AssertNoTrailingSlash(location.path));
     auto blob_client = std::make_shared<Azure::Storage::Blobs::BlobClient>(
         blob_service_client_->GetBlobContainerClient(location.container)
             .GetBlobClient(location.path));
@@ -831,7 +1038,6 @@ class AzureFileSystem::Impl {
 
   Result<std::shared_ptr<ObjectInputFile>> OpenInputFile(const FileInfo& info,
                                                          AzureFileSystem* fs) {
-    ARROW_RETURN_NOT_OK(internal::AssertNoTrailingSlash(info.path()));
     if (info.type() == FileType::NotFound) {
       return ::arrow::fs::internal::PathNotFound(info.path());
     }
@@ -951,7 +1157,6 @@ class AzureFileSystem::Impl {
       const std::shared_ptr<const KeyValueMetadata>& metadata, const bool truncate,
       AzureFileSystem* fs) {
     RETURN_NOT_OK(ValidateFileLocation(location));
-    ARROW_RETURN_NOT_OK(internal::AssertNoTrailingSlash(location.path));
 
     auto block_blob_client = std::make_shared<Azure::Storage::Blobs::BlockBlobClient>(
         blob_service_client_->GetBlobContainerClient(location.container)
@@ -971,7 +1176,7 @@ class AzureFileSystem::Impl {
   }
 
  private:
-  Status DeleteDirContentsWihtoutHierarchicalNamespace(const AzureLocation& location,
+  Status DeleteDirContentsWithoutHierarchicalNamespace(const AzureLocation& location,
                                                        bool missing_dir_ok) {
     auto container_client =
         blob_service_client_->GetBlobContainerClient(location.container);
@@ -1092,7 +1297,7 @@ class AzureFileSystem::Impl {
             exception);
       }
     } else {
-      return DeleteDirContentsWihtoutHierarchicalNamespace(location,
+      return DeleteDirContentsWithoutHierarchicalNamespace(location,
                                                            /*missing_dir_ok=*/true);
     }
   }
@@ -1149,8 +1354,29 @@ class AzureFileSystem::Impl {
       }
       return Status::OK();
     } else {
-      return DeleteDirContentsWihtoutHierarchicalNamespace(location, missing_dir_ok);
+      return DeleteDirContentsWithoutHierarchicalNamespace(location, missing_dir_ok);
     }
+  }
+
+  Status CopyFile(const AzureLocation& src, const AzureLocation& dest) {
+    RETURN_NOT_OK(ValidateFileLocation(src));
+    RETURN_NOT_OK(ValidateFileLocation(dest));
+    if (src == dest) {
+      return Status::OK();
+    }
+    auto dest_blob_client = blob_service_client_->GetBlobContainerClient(dest.container)
+                                .GetBlobClient(dest.path);
+    auto src_url = blob_service_client_->GetBlobContainerClient(src.container)
+                       .GetBlobClient(src.path)
+                       .GetUrl();
+    try {
+      dest_blob_client.CopyFromUri(src_url);
+    } catch (const Azure::Storage::StorageException& exception) {
+      return internal::ExceptionToStatus(
+          "Failed to copy a blob. (" + src_url + " -> " + dest_blob_client.GetUrl() + ")",
+          exception);
+    }
+    return Status::OK();
   }
 };
 
@@ -1173,7 +1399,12 @@ Result<FileInfo> AzureFileSystem::GetFileInfo(const std::string& path) {
 }
 
 Result<FileInfoVector> AzureFileSystem::GetFileInfo(const FileSelector& select) {
-  return Status::NotImplemented("The Azure FileSystem is not fully implemented");
+  Azure::Core::Context context;
+  Azure::Nullable<int32_t> page_size_hint;  // unspecified
+  FileInfoVector results;
+  RETURN_NOT_OK(
+      impl_->GetFileInfoWithSelector(context, page_size_hint, select, &results));
+  return {std::move(results)};
 }
 
 Status AzureFileSystem::CreateDir(const std::string& path, bool recursive) {
@@ -1196,7 +1427,7 @@ Status AzureFileSystem::DeleteDirContents(const std::string& path, bool missing_
 }
 
 Status AzureFileSystem::DeleteRootDirContents() {
-  return Status::NotImplemented("The Azure FileSystem is not fully implemented");
+  return Status::NotImplemented("Cannot delete all Azure Blob Storage containers");
 }
 
 Status AzureFileSystem::DeleteFile(const std::string& path) {
@@ -1208,7 +1439,9 @@ Status AzureFileSystem::Move(const std::string& src, const std::string& dest) {
 }
 
 Status AzureFileSystem::CopyFile(const std::string& src, const std::string& dest) {
-  return Status::NotImplemented("The Azure FileSystem is not fully implemented");
+  ARROW_ASSIGN_OR_RAISE(auto src_location, AzureLocation::FromString(src));
+  ARROW_ASSIGN_OR_RAISE(auto dest_location, AzureLocation::FromString(dest));
+  return impl_->CopyFile(src_location, dest_location);
 }
 
 Result<std::shared_ptr<io::InputStream>> AzureFileSystem::OpenInputStream(
